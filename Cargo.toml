@@ -10,3 +10,4 @@ bio = { version = "2.3.0" }
 log = { version = "0.4.27" }
 simple_logger = { version = "5.0.0" }
 indicatif = { version = "0.18.0" }
+rayon = { version = "1.10.0" }
