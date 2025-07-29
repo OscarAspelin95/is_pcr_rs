@@ -2,6 +2,13 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
+pub struct AmpliconResult<'a> {
+    pub amplicon: &'a [u8],
+    pub start: usize,
+    pub end: usize,
+    pub insert_length: usize,
+    pub total_length: usize,
+}
 pub struct PrimerPair {
     pub primer_name: String,
     pub forward_primer: Vec<u8>,

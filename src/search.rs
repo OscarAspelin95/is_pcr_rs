@@ -1,4 +1,4 @@
-use crate::utils::PrimerPair;
+use crate::utils::{AmpliconResult, PrimerPair};
 use memchr::memmem;
 
 #[inline]
@@ -28,7 +28,7 @@ fn usize_sub(a: usize, b: usize) -> usize {
 }
 
 #[allow(unused)]
-pub fn amplicon_search<'a>(seq: &'a [u8], primer_pair: &PrimerPair) -> Vec<&'a [u8]> {
+pub fn amplicon_search<'a>(seq: &'a [u8], primer_pair: &PrimerPair) -> Vec<AmpliconResult<'a>> {
     let PrimerPair {
         primer_name,
         forward_primer,
@@ -38,6 +38,7 @@ pub fn amplicon_search<'a>(seq: &'a [u8], primer_pair: &PrimerPair) -> Vec<&'a [
     } = primer_pair;
 
     let forward_len = forward_primer.len();
+    let reverse_len: usize = reverse_primer.len();
 
     // We'll find matches for the reverse complemented reverse primer.
     // Primers should always we written in 5' -> 3' direction.
@@ -49,20 +50,28 @@ pub fn amplicon_search<'a>(seq: &'a [u8], primer_pair: &PrimerPair) -> Vec<&'a [
         memmem::find_iter(seq, reverse_complement_primer.as_slice()).collect();
 
     // Store results
-    let mut amplicons: Vec<&[u8]> = Vec::new();
+    let mut amplicons: Vec<AmpliconResult> = Vec::new();
 
     // This is not ideal if we expect many, many matches.
     for forward_hit in &forward_hits {
         let start = forward_hit + forward_len;
 
         for reverse_hit in &reverse_hits {
-            let amplicon_len: usize = usize_sub(*reverse_hit, start);
+            let insert_length: usize = usize_sub(*reverse_hit, start);
 
             // If amplicon is within allowed length.
-            if amplicon_len >= *min_len && amplicon_len <= *max_len {
+            if insert_length >= *min_len && insert_length <= *max_len {
                 let amplicon = &seq[start..*reverse_hit];
 
-                amplicons.push(amplicon);
+                let amplicon_result = AmpliconResult {
+                    amplicon: amplicon,
+                    start: start,
+                    end: *reverse_hit,
+                    insert_length: insert_length,
+                    total_length: forward_len + insert_length + reverse_len,
+                };
+
+                amplicons.push(amplicon_result);
             }
         }
     }

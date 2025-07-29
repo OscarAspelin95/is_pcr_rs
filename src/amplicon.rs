@@ -29,7 +29,19 @@ pub fn amplicon(args: &Args) {
         writer
             .lock()
             .unwrap()
-            .write_all(format!("{}\t{}\t{}\n", "sequence_id", "primer_name", "amplicon").as_bytes())
+            .write_all(
+                format!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                    "sequence_id",
+                    "primer_name",
+                    "start",
+                    "end",
+                    "insert_length",
+                    "actual_length",
+                    "amplicon"
+                )
+                .as_bytes(),
+            )
             .unwrap();
     }
 
@@ -49,10 +61,14 @@ pub fn amplicon(args: &Args) {
                     .iter()
                     .map(|amplicon| {
                         format!(
-                            "{}\t{}\t{}\n",
+                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
                             record.id(),
                             primer_pair.primer_name,
-                            std::str::from_utf8(amplicon).unwrap()
+                            amplicon.start,
+                            amplicon.end,
+                            amplicon.insert_length,
+                            amplicon.total_length,
+                            std::str::from_utf8(amplicon.amplicon).unwrap()
                         )
                     })
                     .collect();
