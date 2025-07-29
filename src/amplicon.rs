@@ -4,6 +4,8 @@ use crate::utils::parse_primer_file;
 use bio::io::fasta::Reader;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
 use std::{
     fs::File,
@@ -18,13 +20,18 @@ pub fn amplicon(args: &Args) {
     let fasta_reader = Reader::from_file(&args.fasta).unwrap();
 
     // Initialize writer to which we write results.
-    let mut writer =
-        BufWriter::new(File::create(&args.outfile).expect("Failed to create output file."));
+    let writer = Arc::new(Mutex::new(BufWriter::new(
+        File::create(&args.outfile).expect("Failed to create output file."),
+    )));
 
     // Write tsv header.
-    writer
-        .write_all(format!("{}\t{}\t{}\n", "sequence_id", "primer_name", "amplicon").as_bytes())
-        .unwrap();
+    {
+        writer
+            .lock()
+            .unwrap()
+            .write_all(format!("{}\t{}\t{}\n", "sequence_id", "primer_name", "amplicon").as_bytes())
+            .unwrap();
+    }
 
     let records = fasta_reader.records();
 
@@ -33,7 +40,7 @@ pub fn amplicon(args: &Args) {
     spinner.enable_steady_tick(Duration::from_millis(200));
     spinner.set_style(ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}]").unwrap());
 
-    records.for_each(|record| {
+    records.par_bridge().for_each(|record| {
         if let Ok(record) = record {
             for primer_pair in &primer_pairs {
                 let amplicons = amplicon_search(record.seq(), primer_pair);
@@ -50,7 +57,11 @@ pub fn amplicon(args: &Args) {
                     })
                     .collect();
 
-                writer.write_all(result_vec.join("").as_bytes()).unwrap();
+                writer
+                    .lock()
+                    .unwrap()
+                    .write_all(result_vec.join("").as_bytes())
+                    .unwrap();
             }
         }
     });
