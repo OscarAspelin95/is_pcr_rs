@@ -1,71 +1,59 @@
-use crate::utils::PrimerPair;
-use memchr::memmem;
+use crate::args::Args;
+use crate::search::amplicon_search;
+use crate::utils::parse_primer_file;
+use bio::io::fasta::Reader;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::info;
 
-#[inline]
-fn reverse_complement(seq: &[u8]) -> Vec<u8> {
-    let reverse_complement: Vec<u8> = seq
-        .iter()
-        .rev()
-        .map(|nt| match nt {
-            b'A' => b'T',
-            b'C' => b'G',
-            b'G' => b'C',
-            b'T' => b'A',
-            _ => panic!(""),
-        })
-        .collect();
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    time::Duration,
+};
 
-    return reverse_complement;
-}
+pub fn amplicon(args: &Args) {
+    // Read and parse primer file.
+    let primer_pairs = parse_primer_file(&args.primers);
 
-#[inline]
-fn usize_sub(a: usize, b: usize) -> usize {
-    if a > b {
-        return a - b;
-    }
+    let fasta_reader = Reader::from_file(&args.fasta).unwrap();
 
-    return 0;
-}
-pub fn amplicon_search<'a>(seq: &'a [u8], primer_pair: &PrimerPair) -> Vec<&'a [u8]> {
-    let PrimerPair {
-        primer_name,
-        forward_primer,
-        reverse_primer,
-        expected_len,
-        margin,
-    } = primer_pair;
+    // Initialize writer to which we write results.
+    let mut writer =
+        BufWriter::new(File::create(&args.outfile).expect("Failed to create output file."));
 
-    let forward_len = forward_primer.len();
+    // Write tsv header.
+    writer
+        .write_all(format!("{}\t{}\t{}\n", "sequence_id", "primer_name", "amplicon").as_bytes())
+        .unwrap();
 
-    // We'll find matches for the reverse complemented reverse primer.
-    // Primers should always we written in 5' -> 3' direction.
-    let reverse_complement_primer = reverse_complement(reverse_primer);
+    let records = fasta_reader.records();
 
-    // Find all occurrences of the forward and reverse primers.
-    let forward_hits: Vec<usize> = memmem::find_iter(seq, forward_primer).collect();
-    let reverse_hits: Vec<usize> =
-        memmem::find_iter(seq, reverse_complement_primer.as_slice()).collect();
+    info!("Finding amplicons...");
+    let spinner: ProgressBar = ProgressBar::new_spinner();
+    spinner.enable_steady_tick(Duration::from_millis(200));
+    spinner.set_style(ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}]").unwrap());
 
-    // Store results
-    let mut amplicons: Vec<&[u8]> = Vec::new();
+    records.for_each(|record| {
+        if let Ok(record) = record {
+            for primer_pair in &primer_pairs {
+                let amplicons = amplicon_search(record.seq(), primer_pair);
 
-    // This is not ideal if we expect many, many matches.
-    for forward_hit in &forward_hits {
-        let start = forward_hit + forward_len;
+                let result_vec: Vec<String> = amplicons
+                    .iter()
+                    .map(|amplicon| {
+                        format!(
+                            "{}\t{}\t{}\n",
+                            record.id(),
+                            primer_pair.primer_name,
+                            std::str::from_utf8(amplicon).unwrap()
+                        )
+                    })
+                    .collect();
 
-        for reverse_hit in &reverse_hits {
-            let amplicon_len: usize = usize_sub(*reverse_hit, start);
-
-            // If amplicon is within allowed length.
-            if amplicon_len <= expected_len + margin
-                && amplicon_len >= usize_sub(*expected_len, *margin)
-            {
-                let amplicon = &seq[start..*reverse_hit];
-
-                amplicons.push(amplicon);
+                writer.write_all(result_vec.join("").as_bytes()).unwrap();
             }
         }
-    }
+    });
 
-    return amplicons;
+    spinner.finish();
 }
