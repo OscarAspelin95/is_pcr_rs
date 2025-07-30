@@ -1,5 +1,6 @@
 use crate::args::Args;
 use crate::search::amplicon_search;
+use crate::utils::AmpliconError;
 use crate::utils::parse_primer_file;
 use bio::io::fasta::Reader;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -13,11 +14,32 @@ use std::{
     time::Duration,
 };
 
-pub fn amplicon(args: &Args) {
-    // Read and parse primer file.
-    let primer_pairs = parse_primer_file(&args.primers);
+fn write_header(writer: &Arc<Mutex<BufWriter<File>>>) {
+    writer
+        .lock()
+        .unwrap()
+        .write_all(
+            format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                "sequence_id",
+                "primer_name",
+                "start",
+                "end",
+                "insert_length",
+                "actual_length",
+                "amplicon"
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+}
 
-    let fasta_reader = Reader::from_file(&args.fasta).unwrap();
+pub fn amplicon(args: &Args) -> Result<(), AmpliconError<'_>> {
+    // Read and parse primer file.
+    let primer_pairs = parse_primer_file(&args.primers)?;
+
+    let fasta_reader = Reader::from_file(&args.fasta)
+        .map_err(|_| AmpliconError::FastaFileOpenError(&args.fasta))?;
 
     // Initialize writer to which we write results.
     let writer = Arc::new(Mutex::new(BufWriter::new(
@@ -25,34 +47,14 @@ pub fn amplicon(args: &Args) {
     )));
 
     // Write tsv header.
-    {
-        writer
-            .lock()
-            .unwrap()
-            .write_all(
-                format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                    "sequence_id",
-                    "primer_name",
-                    "start",
-                    "end",
-                    "insert_length",
-                    "actual_length",
-                    "amplicon"
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-    }
-
-    let records = fasta_reader.records();
+    write_header(&writer);
 
     info!("Finding amplicons...");
     let spinner: ProgressBar = ProgressBar::new_spinner();
     spinner.enable_steady_tick(Duration::from_millis(200));
     spinner.set_style(ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}]").unwrap());
 
-    records.par_bridge().for_each(|record| {
+    fasta_reader.records().par_bridge().for_each(|record| {
         if let Ok(record) = record {
             for primer_pair in &primer_pairs {
                 let amplicons = amplicon_search(record.seq(), primer_pair);
@@ -73,14 +75,20 @@ pub fn amplicon(args: &Args) {
                     })
                     .collect();
 
-                writer
-                    .lock()
-                    .unwrap()
-                    .write_all(result_vec.join("").as_bytes())
-                    .unwrap();
+                // Is is probably not ideal to write results after each primer pair.
+                // A better approach would be to write after each record.
+                if result_vec.len() > 0 {
+                    writer
+                        .lock()
+                        .unwrap()
+                        .write_all(result_vec.concat().as_bytes())
+                        .unwrap();
+                }
             }
         }
     });
 
     spinner.finish();
+
+    Ok(())
 }
