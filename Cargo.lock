@@ -468,6 +468,7 @@ dependencies = [
  "memchr",
  "rayon",
  "simple_logger",
+ "thiserror 2.0.12",
 ]
 
 [[package]]

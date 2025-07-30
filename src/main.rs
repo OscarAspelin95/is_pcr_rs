@@ -13,6 +13,5 @@ fn main() {
     SimpleLogger::new().init().unwrap();
 
     let args = Args::parse();
-
-    amplicon(&args);
+    let _ = amplicon(&args).unwrap();
 }

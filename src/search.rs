@@ -40,16 +40,14 @@ pub fn amplicon_search<'a>(seq: &'a [u8], primer_pair: &PrimerPair) -> Vec<Ampli
     let forward_len = forward_primer.len();
     let reverse_len: usize = reverse_primer.len();
 
-    // We'll find matches for the reverse complemented reverse primer.
-    // Primers should always we written in 5' -> 3' direction.
+    // For reverse primer, we need to 3' -> 5' direction.
     let reverse_complement_primer = reverse_complement(reverse_primer);
 
-    // Find all occurrences of the forward and reverse primers.
+    // Find all occurrences of the forward and reverse primers in seq.
     let forward_hits: Vec<usize> = memmem::find_iter(seq, forward_primer).collect();
     let reverse_hits: Vec<usize> =
         memmem::find_iter(seq, reverse_complement_primer.as_slice()).collect();
 
-    // Store results
     let mut amplicons: Vec<AmpliconResult> = Vec::new();
 
     // This is not ideal if we expect many, many matches.
