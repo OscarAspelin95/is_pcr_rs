@@ -1,3 +1,5 @@
+⚠️ Depreciated since it is now part of [fasta_rs](https://github.com/OscarAspelin95/fasta_rs).
+
 # is_pcr_rs
 In-silico PCR through exact primer match.
 
